@@ -1,0 +1,2085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="base:app_id" content="6a97e9eccfa2c998e36b5ac7" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Base Bastion — Defend the Chain 🏯</title>
+    <meta name="description" content="A tower defense game for the Base network — build turrets, defend the Base Core from FUD invaders, and claim onchain rewards.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏯</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;900&display=swap');
+
+        :root { --board-size: min(96vw, 480px); }
+        * { -webkit-tap-highlight-color: transparent; }
+        html { height: 100%; }
+        body { min-height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+        body {
+            background: radial-gradient(circle at 50% 0%, #2e1065 0%, #020617 80%);
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                radial-gradient(circle at 20% 30%, rgba(139, 92, 246, 0.18) 0%, transparent 22%),
+                radial-gradient(circle at 80% 70%, rgba(59, 130, 246, 0.18) 0%, transparent 22%),
+                radial-gradient(circle at 50% 90%, rgba(236, 72, 153, 0.12) 0%, transparent 25%);
+            z-index: -2;
+            pointer-events: none;
+        }
+
+        .stars { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+        .star {
+            position: absolute; width: 3px; height: 3px; background: white; border-radius: 50%;
+            opacity: 0.5; animation: twinkle 3s ease-in-out infinite;
+        }
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.15; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.4); }
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .brand-title {
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #a855f7, #ec4899 50%, #6366f1);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            filter: drop-shadow(0 0 18px rgba(168, 85, 247, 0.35));
+        }
+
+        .stat-card { min-width: 0; }
+        .stat-label {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: #94a3b8;
+            margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .stat-value {
+            font-size: clamp(16px, 5vw, 24px); font-weight: 900; line-height: 1.1;
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+        }
+
+        .shiny-btn {
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+            background-size: 200% 200%;
+            animation: gradientShift 4s ease infinite;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .shiny-btn:disabled, .action-btn:disabled {
+            opacity: 0.5; cursor: not-allowed; animation: none; transform: none !important;
+        }
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; }
+        }
+
+        .mute-toggle { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; }
+
+        .wallet-option { border: 1px solid rgba(255,255,255,0.08); }
+        .wallet-option:hover { border-color: rgba(168, 85, 247, 0.5); background: rgba(168, 85, 247, 0.08); }
+
+        .game-wrap {
+            position: relative;
+            width: var(--board-size);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 0 40px rgba(139, 92, 246, 0.3), inset 0 0 20px rgba(0,0,0,0.5);
+            touch-action: none;
+        }
+        #gameCanvas { display: block; width: 100%; touch-action: none; }
+
+        .overlay {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(2, 6, 23, 0.72); backdrop-filter: blur(3px);
+            text-align: center; padding: 16px;
+            animation: overlayIn 0.35s ease-out;
+        }
+        @keyframes overlayIn {
+            from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); }
+        }
+        .overlay-icon {
+            animation: iconPulse 2.2s ease-in-out infinite;
+            filter: drop-shadow(0 0 18px rgba(168, 85, 247, 0.5));
+        }
+        @keyframes iconPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+
+        .result-overlay {
+            position: fixed; inset: 0; z-index: 50;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(2, 6, 23, 0.8); backdrop-filter: blur(4px);
+        }
+
+        .lb-row {
+            display: grid;
+            grid-template-columns: 32px 1fr 60px;
+            align-items: center;
+            gap: 6px;
+        }
+        .lb-header {
+            color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; padding: 0 12px;
+        }
+
+        .tower-option {
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.15s;
+        }
+        .tower-option:not(:disabled):hover { border-color: rgba(168,85,247,0.5); background: rgba(168,85,247,0.08); }
+        .tower-option:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .upcoming-chip {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 7px;
+            border-radius: 999px;
+            border: 1px solid;
+            background: rgba(15, 23, 42, 0.6);
+            text-transform: capitalize;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="stars" id="stars"></div>
+
+    <!-- Header & Wallet -->
+    <div class="glass-panel w-full flex justify-between items-center mb-3 p-3 rounded-2xl relative overflow-hidden" style="max-width: var(--board-size);">
+        <div class="absolute top-0 left-0 w-1 h-full bg-blue-500 shadow-[0_0_15px_#3b82f6]"></div>
+        <div class="pl-2">
+            <span class="text-[10px] text-blue-400 font-bold tracking-widest flex items-center gap-1.5">
+                <span id="netDot" class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                <span id="netLabel">BASE MAINNET</span>
+            </span>
+            <div id="walletAddress" class="text-sm font-mono text-gray-200 mt-0.5">Not Connected</div>
+        </div>
+        <button id="connectBtn" onclick="openWalletModal()" class="bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.5)] px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all active:scale-95">
+            Connect
+        </button>
+    </div>
+
+    <!-- Wallet Picker Modal -->
+    <div id="walletModal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style="background: rgba(2, 6, 23, 0.75); backdrop-filter: blur(4px);">
+        <div class="glass-panel w-full max-w-[380px] rounded-2xl p-5" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-bold">Connect a wallet</h2>
+                <button onclick="closeWalletModal()" class="text-gray-400 hover:text-white text-xl leading-none px-2" aria-label="Close">×</button>
+            </div>
+            <div id="walletList" class="space-y-2"></div>
+            <p class="text-[11px] text-gray-400 mt-4 text-center">Base Bastion never asks for your seed phrase or private key.</p>
+        </div>
+    </div>
+
+    <!-- Title -->
+    <div class="text-center mb-3 select-none">
+        <h1 class="brand-title text-3xl leading-tight">Base Bastion</h1>
+        <p class="text-[11px] text-gray-400 tracking-wide mt-0.5">Build turrets · Defend the Base Core · Survive the waves</p>
+    </div>
+
+    <!-- Stats -->
+    <div class="flex gap-2 sm:gap-3 w-full mb-3" style="max-width: var(--board-size);">
+        <div class="glass-panel stat-card flex-1 rounded-2xl px-2 py-3 text-center">
+            <div class="stat-label">WAVE</div>
+            <div id="waveDisplay" class="stat-value bg-gradient-to-r from-pink-400 to-purple-400">1</div>
+        </div>
+        <div class="glass-panel stat-card flex-1 rounded-2xl px-2 py-3 text-center">
+            <div class="stat-label">GOLD</div>
+            <div id="goldDisplay" class="stat-value bg-gradient-to-r from-yellow-300 to-amber-500">150</div>
+        </div>
+        <div class="glass-panel stat-card flex-1 rounded-2xl px-2 py-3 text-center">
+            <div class="stat-label">CORE HP</div>
+            <div id="livesDisplay" class="stat-value bg-gradient-to-r from-cyan-300 to-blue-400">16</div>
+        </div>
+    </div>
+
+    <!-- Game -->
+    <div class="game-wrap glass-panel">
+        <canvas id="gameCanvas" width="380" height="620"></canvas>
+        <div id="startOverlay" class="overlay">
+            <div class="text-4xl mb-2 overlay-icon">🏰</div>
+            <p class="font-bold text-lg mb-1">Tap empty slots to build</p>
+            <p class="text-xs text-gray-400 mb-4">Stop the FUD invaders before they reach the Base Core.</p>
+            <div class="flex flex-col gap-2 w-full items-center">
+                <button onclick="requestGameStart('startBtn')" id="startBtn" class="shiny-btn px-6 py-3 rounded-xl font-bold text-sm uppercase tracking-wider w-full max-w-[220px]">⛓ Start Defense (On-Chain)</button>
+                <button onclick="startGame()" class="glass-panel px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider w-full max-w-[220px] text-gray-300">▶ Play Free (No Tx)</button>
+            </div>
+        </div>
+        <div id="overOverlay" class="overlay hidden">
+            <div class="text-4xl mb-2 overlay-icon">💥</div>
+            <p class="font-bold text-lg mb-1">Base Core Destroyed!</p>
+            <p id="overStats" class="text-xs text-gray-300 mb-4"></p>
+            <div class="flex flex-col gap-2 w-full items-center">
+                <button onclick="requestGameStart('restartBtn')" id="restartBtn" class="shiny-btn px-6 py-3 rounded-xl font-bold text-sm uppercase tracking-wider w-full max-w-[220px]">⛓ Defend Again (On-Chain)</button>
+                <button onclick="startGame()" class="glass-panel px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider w-full max-w-[220px] text-gray-300">▶ Play Free (No Tx)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wave control -->
+    <div class="w-full mt-3" style="max-width: var(--board-size);">
+        <div id="upcomingPreview" class="flex flex-wrap gap-1.5 justify-center mb-2 min-h-[22px]"></div>
+        <button id="waveBtn" onclick="beginWave()" class="w-full shiny-btn py-3 rounded-2xl font-bold text-sm uppercase tracking-wider shadow-xl active:scale-95 transition-all" disabled>
+            ▶ Start Wave 1
+        </button>
+    </div>
+
+    <!-- Build Modal -->
+    <div id="buildOverlay" class="result-overlay hidden" onclick="closeBuildModal()">
+        <div class="glass-panel w-full max-w-[340px] rounded-2xl p-5 mx-4" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-3">
+                <h2 id="buildTitle" class="text-base font-bold">Build a Tower</h2>
+                <button onclick="closeBuildModal()" class="text-gray-400 hover:text-white text-xl leading-none px-2" aria-label="Close">×</button>
+            </div>
+            <div id="buildOptions" class="space-y-2"></div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="mt-4 w-full space-y-2.5" style="max-width: var(--board-size);">
+        <button id="dailyBtn" onclick="claimDailyBoost()" class="action-btn shiny-btn w-full py-4 rounded-2xl font-bold text-sm uppercase tracking-wider shadow-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all text-white" disabled>
+            <span id="dailyBtnLabel">🧩 Play a Round First</span>
+        </button>
+        <button id="saveBtn" onclick="saveResultOnChain()" class="action-btn w-full glass-panel bg-emerald-900/40 hover:bg-emerald-800/60 py-3.5 rounded-2xl font-bold text-sm text-emerald-400 border border-emerald-500/30 active:scale-95 transition-all uppercase tracking-wider" disabled>
+            💾 Save Best Score On-Chain
+        </button>
+    </div>
+
+    <div class="flex items-center justify-center gap-3 mt-3">
+        <button onclick="toggleMute()" id="muteBtn" class="mute-toggle glass-panel rounded-full text-sm" title="Toggle sound">🔊</button>
+    </div>
+
+    <p id="txStatus" class="text-xs text-center font-mono mt-2 min-h-[1rem] text-emerald-400 tracking-wide px-4"></p>
+
+    <script>
+        // --- BACKGROUND STARFIELD ---
+        (function initStars() {
+            const container = document.getElementById('stars');
+            for (let i = 0; i < 40; i++) {
+                const s = document.createElement('div');
+                s.className = 'star';
+                s.style.left = Math.random() * 100 + '%';
+                s.style.top = Math.random() * 100 + '%';
+                s.style.animationDelay = (Math.random() * 3) + 's';
+                s.style.animationDuration = (2 + Math.random() * 3) + 's';
+                container.appendChild(s);
+            }
+        })();
+
+        // --- AUDIO ---
+        let audioCtx;
+        let muted = localStorage.getItem('basetower_muted') === 'true';
+        updateMuteBtn();
+        function toggleMute() {
+            muted = !muted;
+            localStorage.setItem('basetower_muted', muted);
+            updateMuteBtn();
+        }
+        function updateMuteBtn() {
+            document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
+        }
+        function playSound(type) {
+            if (muted) return;
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+            if (type === 'shoot') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(700, now);
+                osc.frequency.exponentialRampToValueAtTime(500, now + 0.05);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                osc.start(now); osc.stop(now + 0.05);
+            } else if (type === 'hit') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(120, now + 0.1);
+                gain.gain.setValueAtTime(0.09, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'build') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(500, now);
+                osc.frequency.exponentialRampToValueAtTime(850, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'breach') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.linearRampToValueAtTime(60, now + 0.4);
+                gain.gain.setValueAtTime(0.16, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now); osc.stop(now + 0.4);
+            } else if (type === 'win') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(500, now);
+                osc.frequency.exponentialRampToValueAtTime(1000, now + 0.15);
+                osc.frequency.exponentialRampToValueAtTime(1400, now + 0.3);
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now); osc.stop(now + 0.4);
+            }
+        }
+
+        // --- CANVAS SETUP (device-pixel-ratio aware for crisp rendering) ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const CW = 380, CH = 620;
+        const DPR = Math.min(window.devicePixelRatio || 1, 3);
+        canvas.width = CW * DPR;
+        canvas.height = CH * DPR;
+        ctx.scale(DPR, DPR);
+
+        // --- PATH (serpentine waypoints the enemies walk along) — 6 rows now,
+        // roughly 50% longer than the original 4-row layout ---
+        const PATH = [
+            { x: 10, y: 50 }, { x: 350, y: 50 },
+            { x: 350, y: 150 }, { x: 30, y: 150 },
+            { x: 30, y: 250 }, { x: 350, y: 250 },
+            { x: 350, y: 350 }, { x: 30, y: 350 },
+            { x: 30, y: 450 }, { x: 350, y: 450 },
+            { x: 350, y: 550 }, { x: 30, y: 550 }
+        ];
+        const BASE_CORE = PATH[PATH.length - 1];
+
+        // --- BUILDABLE SLOTS — one row of 4 slots between every pair of path
+        // rows (5 gaps × 4 columns = 20 slots, up from 15) ---
+        const SLOTS = [
+            { x: 85, y: 100 }, { x: 158, y: 100 }, { x: 231, y: 100 }, { x: 304, y: 100 },
+            { x: 85, y: 200 }, { x: 158, y: 200 }, { x: 231, y: 200 }, { x: 304, y: 200 },
+            { x: 85, y: 300 }, { x: 158, y: 300 }, { x: 231, y: 300 }, { x: 304, y: 300 },
+            { x: 85, y: 400 }, { x: 158, y: 400 }, { x: 231, y: 400 }, { x: 304, y: 400 },
+            { x: 85, y: 500 }, { x: 158, y: 500 }, { x: 231, y: 500 }, { x: 304, y: 500 }
+        ].map(s => ({ ...s, tower: null }));
+
+        // --- TOWER TYPES ---
+        const TOWER_TYPES = {
+            turret: { name: 'Turret', icon: '🔫', cost: 50, dmg: 1, range: 90, fireRate: 0.5, color: '#60a5fa', splash: 0 },
+            cannon: { name: 'Cannon', icon: '💥', cost: 120, dmg: 3, range: 75, fireRate: 1.1, color: '#f97316', splash: 34 },
+            sniper: { name: 'Sniper', icon: '🎯', cost: 150, dmg: 6, range: 165, fireRate: 1.7, color: '#c084fc', splash: 0 },
+            // Frost — low damage, but slows anything it hits. The only real
+            // counter to Rusher/Fast/Reaper/Blinker, which otherwise just outrun
+            // whatever DPS you've built.
+            frost: { name: 'Frost', icon: '❄️', cost: 90, dmg: 1, range: 85, fireRate: 0.7, color: '#38bdf8', splash: 0, slow: 0.45, slowDuration: 1.6 }
+        };
+
+        // --- TOWER UPGRADES ---
+        const MAX_TOWER_LEVEL = 5;
+        // Effective (level-scaled) stats for a built tower — damage and splash
+        // grow, fire rate gets a little faster, range extends slightly per level.
+        function getTowerStats(tower) {
+            const base = TOWER_TYPES[tower.type];
+            const lvl = tower.level || 1;
+            return {
+                ...base,
+                dmg: Math.round(base.dmg * (1 + (lvl - 1) * 0.6) * 10) / 10,
+                range: base.range + (lvl - 1) * 15,
+                fireRate: +(base.fireRate * Math.pow(0.88, lvl - 1)).toFixed(2),
+                splash: base.splash ? base.splash + (lvl - 1) * 6 : 0
+            };
+        }
+        function upgradeCost(tower) {
+            const base = TOWER_TYPES[tower.type].cost;
+            const lvl = tower.level || 1;
+            return Math.round(base * (0.8 + lvl * 0.7));
+        }
+
+        // --- ENEMY TYPES ---
+        const ENEMY_TYPES = {
+            drone: { hp: 6, speed: 55, scale: 1, color: '#ef4444', darkColor: '#1c0505', reward: 8, damage: 2, unlockWave: 1 },
+            // Rusher — fast from wave 1, so reflexes matter from the very first wave.
+            rusher: { hp: 5, speed: 82, scale: 0.85, color: '#fb7185', darkColor: '#4c0519', reward: 9, damage: 1, unlockWave: 1 },
+            // Brute — a mini-tank that shows up two waves before the real Tank does,
+            // closing the "waves 1-2 are trivial" gap.
+            brute: { hp: 14, speed: 30, scale: 1.22, color: '#eab308', darkColor: '#422006', reward: 13, damage: 3, unlockWave: 2 },
+            tank: { hp: 18, speed: 32, scale: 1.35, color: '#f97316', darkColor: '#431407', reward: 16, damage: 4, unlockWave: 3 },
+            // Bomber — hits noticeably harder if it reaches the Base Core, so letting
+            // it slip through even once really hurts.
+            bomber: { hp: 9, speed: 42, scale: 1.05, color: '#f43f5e', darkColor: '#3f0413', reward: 15, damage: 5, unlockWave: 4, bomber: true },
+            fast: { hp: 5, speed: 95, scale: 0.8, color: '#f472b6', darkColor: '#500724', reward: 11, damage: 1, unlockWave: 5 },
+            // Shielded — takes half damage from single-target shots; splash towers bypass the shield entirely.
+            guardian: { hp: 30, speed: 26, scale: 1.3, color: '#22d3ee', darkColor: '#083344', reward: 22, damage: 4, unlockWave: 6, shielded: true },
+            // Support — periodically heals nearby enemies, so it's a priority kill target.
+            healer: { hp: 15, speed: 45, scale: 1.05, color: '#34d399', darkColor: '#022c22', reward: 18, damage: 2, unlockWave: 8, healer: true },
+            // Splitter — on death, breaks into 2 weaker drones that keep walking from the same spot.
+            splitter: { hp: 10, speed: 48, scale: 1, color: '#a3e635', darkColor: '#1a2e05', reward: 14, damage: 3, unlockWave: 9, splitsInto: 2 },
+            // Phantom — has a chance to dodge single-target shots entirely; splash still always hits.
+            phantom: { hp: 8, speed: 62, scale: 0.95, color: '#818cf8', darkColor: '#1e1b4b', reward: 20, damage: 3, unlockWave: 11, dodgeChance: 0.3 },
+            // Juggernaut — flat armor absorbs a fixed amount of EVERY hit (splash included),
+            // so big hard-hitting shots (Sniper) counter it better than many small ones.
+            juggernaut: { hp: 50, speed: 22, scale: 1.55, color: '#a8a29e', darkColor: '#1c1917', reward: 32, damage: 5, unlockWave: 13, armor: 4 },
+            // Cloaked Stalker — flickers between visible and fully untargetable,
+            // so towers can only actually hit it in short windows.
+            stalker: { hp: 14, speed: 72, scale: 0.9, color: '#94a3b8', darkColor: '#0f172a', reward: 28, damage: 4, unlockWave: 16, cloak: true, cloakVisible: 1.1, cloakHidden: 1.6 },
+            // Berserker — the lower its HP falls, the faster it moves (up to +80% speed near death).
+            berserker: { hp: 24, speed: 40, scale: 1.15, color: '#dc2626', darkColor: '#3f0303', reward: 27, damage: 4, unlockWave: 18, berserk: true },
+            // Blinker — periodically teleport-skips forward along the path, punishing slow-firing towers.
+            blinker: { hp: 12, speed: 50, scale: 0.9, color: '#3b82f6', darkColor: '#0c1e3e', reward: 25, damage: 3, unlockWave: 20, teleports: true, teleportEvery: 2.3, teleportDist: 55 },
+            // Boss — appears alone every 5th wave, enrages (speeds up) below 30% HP.
+            warlord: { hp: 85, speed: 20, scale: 1.9, color: '#facc15', darkColor: '#451a03', reward: 95, damage: 8, unlockWave: 5, isBoss: true },
+            // Overlord — a rarer, tougher boss (every 10th wave instead of Warlord):
+            // shielded AND continuously speeds up as it takes damage. Very dangerous
+            // if left alone, since single-target damage is halved the whole fight.
+            overlord: { hp: 170, speed: 22, scale: 2.15, color: '#7c3aed', darkColor: '#1e1033', reward: 170, damage: 11, unlockWave: 10, isBoss: true, shielded: true, berserk: true },
+            // Reaper — breaks the usual "tough = slow" pattern: high HP AND fast, so
+            // you can't just out-range it with weak towers the way you can a Tank.
+            reaper: { hp: 45, speed: 70, scale: 1.4, color: '#0d9488', darkColor: '#042f2e', reward: 40, damage: 6, unlockWave: 22 }
+        };
+
+        // --- GAME STATE ---
+        let gold = 150;
+        let lives = 16;
+        let wave = 1;
+        let kills = 0;
+        let score = 0;
+        let enemies = [];
+        let projectiles = [];
+        let particles = [];
+        let floatingTexts = [];
+        let shakeTime = 0;
+        let waveBanner = null;
+        let running = false;
+        let waveActive = false;
+        const BUILD_PHASE_LIMIT = 20; // seconds you get to build before the next wave auto-starts
+        let buildTimer = BUILD_PHASE_LIMIT;
+        let spawnQueue = [];
+        let spawnTimer = 0;
+        let lastTs = null;
+        let selectedSlot = null;
+        let upcomingComposition = null;
+        let bestScore = parseInt(localStorage.getItem('basetower_best') || '0', 10);
+        let enemyIdCounter = 0;
+
+        function updateStatsUI() {
+            document.getElementById('waveDisplay').textContent = wave;
+            document.getElementById('goldDisplay').textContent = gold;
+            document.getElementById('livesDisplay').textContent = Math.max(0, lives);
+        }
+
+        function resetRun() {
+            gold = 150;
+            lives = 16;
+            wave = 1;
+            kills = 0;
+            score = 0;
+            enemies = [];
+            projectiles = [];
+            particles = [];
+            floatingTexts = [];
+            shakeTime = 0;
+            waveBanner = null;
+            waveActive = false;
+            spawnQueue = [];
+            spawnTimer = 0;
+            buildTimer = BUILD_PHASE_LIMIT;
+            SLOTS.forEach(s => s.tower = null);
+            updateStatsUI();
+            document.getElementById('waveBtn').disabled = false;
+            document.getElementById('waveBtn').textContent = `▶ Start Wave 1 (${BUILD_PHASE_LIMIT}s)`;
+            refreshUpcomingPreview();
+        }
+
+        // Requires an on-chain transaction before the run actually begins.
+        async function requestGameStart(btnId) {
+            playSound('build');
+            if (!userAddress || !activeProvider) {
+                setStatus('⚠️ Connect your wallet first to start a run', true);
+                openWalletModal();
+                return;
+            }
+            const btn = document.getElementById(btnId);
+            setBtnBusy(btn, true, '⏳ Confirm in wallet...');
+            try {
+                setStatus('⏳ Awaiting confirmation to start...');
+                const tx = await activeProvider.request({
+                    method: 'eth_sendTransaction',
+                    params: [{ from: userAddress, to: userAddress, value: '0x0' }]
+                });
+                setStatus(`✅ Run started on-chain! Tx: ${tx.slice(0, 10)}...`);
+                playSound('win');
+                startGame();
+            } catch {
+                setStatus('❌ Transaction was rejected — run not started', true);
+                playSound('breach');
+            } finally {
+                setBtnBusy(btn, false);
+            }
+        }
+
+        function startGame() {
+            playSound('build');
+            document.getElementById('startOverlay').classList.add('hidden');
+            document.getElementById('overOverlay').classList.add('hidden');
+            resetRun();
+            running = true;
+            lastTs = null;
+            requestAnimationFrame(loop);
+        }
+
+        // --- WAVE SPAWNING ---
+        function pickEnemyTypeForWave(w) {
+            const pool = [];
+            Object.entries(ENEMY_TYPES).forEach(([key, cfg]) => {
+                if (cfg.isBoss) return; // bosses only spawn via the dedicated boss-wave path
+                if (w < cfg.unlockWave) return;
+                const weight = key === 'drone' ? 6 : Math.min(6, 1 + (w - cfg.unlockWave));
+                for (let i = 0; i < weight; i++) pool.push(key);
+            });
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+
+        function generateWaveComposition(w) {
+            const isOverlordWave = w % 10 === 0 && w >= ENEMY_TYPES.overlord.unlockWave;
+            const isBossWave = (w % 5 === 0 && w >= ENEMY_TYPES.warlord.unlockWave) || isOverlordWave;
+            const queue = [];
+            if (isOverlordWave) {
+                queue.push('overlord');
+            } else if (isBossWave) {
+                queue.push('warlord');
+            } else {
+                const count = 7 + Math.round(w * 3);
+                for (let i = 0; i < count; i++) queue.push(pickEnemyTypeForWave(w));
+            }
+            return { queue, isOverlordWave, isBossWave };
+        }
+
+        function refreshUpcomingPreview() {
+            upcomingComposition = generateWaveComposition(wave);
+            renderUpcomingPreview(upcomingComposition.queue);
+        }
+
+        function renderUpcomingPreview(queue) {
+            const el = document.getElementById('upcomingPreview');
+            if (!el) return;
+            const counts = {};
+            queue.forEach(k => { counts[k] = (counts[k] || 0) + 1; });
+            el.innerHTML = Object.entries(counts).map(([key, n]) => {
+                const type = ENEMY_TYPES[key];
+                return `<span class="upcoming-chip" style="border-color:${type.color}; color:${type.color}">${n}× ${key}</span>`;
+            }).join('');
+        }
+
+        function beginWave() {
+            if (waveActive) return;
+            playSound('win');
+            waveActive = true;
+            const comp = upcomingComposition || generateWaveComposition(wave);
+            waveBanner = {
+                text: comp.isOverlordWave ? `☠ OVERLORD WAVE ${wave} ☠` : comp.isBossWave ? `⚠ WARLORD WAVE ${wave} ⚠` : `WAVE ${wave}`,
+                t: 0
+            };
+            document.getElementById('waveBtn').disabled = true;
+            document.getElementById('waveBtn').textContent = 'Wave in progress...';
+            document.getElementById('upcomingPreview').innerHTML = '';
+
+            spawnQueue = comp.queue.slice();
+            spawnTimer = 0;
+        }
+
+        function spawnEnemy(typeKey) {
+            const type = ENEMY_TYPES[typeKey];
+            // Exponential (not linear) scaling — this is the key fix: with unlimited
+            // build slots and tower upgrades, a linear HP curve eventually gets
+            // trivialized no matter how high the numbers start. Compounding growth
+            // keeps pace with the player's compounding economy instead.
+            const wavesSinceUnlock = Math.max(0, wave - type.unlockWave);
+            const hpScale = Math.pow(1.15, wavesSinceUnlock);
+            const hp = Math.round(type.hp * hpScale);
+            enemies.push({
+                id: enemyIdCounter++,
+                type: typeKey,
+                segIndex: 0, segT: 0,
+                x: PATH[0].x, y: PATH[0].y,
+                hp, maxHp: hp,
+                speed: type.speed,
+                phase: Math.random() * Math.PI * 2,
+                healTimer: 0,
+                cloakTimer: type.cloak ? type.cloakVisible : 0,
+                cloaked: false,
+                teleportTimer: type.teleports ? type.teleportEvery : 0,
+                slowTimer: 0,
+                slowFactor: 0,
+                dead: false
+            });
+        }
+
+        function segmentLength(i) {
+            const a = PATH[i], b = PATH[i + 1];
+            return Math.hypot(b.x - a.x, b.y - a.y);
+        }
+
+        function updateEnemyPosition(en) {
+            const a = PATH[en.segIndex], b = PATH[en.segIndex + 1];
+            en.x = a.x + (b.x - a.x) * en.segT;
+            en.y = a.y + (b.y - a.y) * en.segT;
+        }
+
+        // Instantly advances an enemy a fixed pixel distance along the path,
+        // possibly crossing several waypoints — used for Blinker's teleport-skip.
+        function advanceAlongPath(en, dist) {
+            let remaining = dist;
+            while (remaining > 0 && en.segIndex < PATH.length - 1) {
+                const segLen = segmentLength(en.segIndex);
+                const remainingInSeg = (1 - en.segT) * segLen;
+                if (remaining < remainingInSeg) {
+                    en.segT += remaining / segLen;
+                    remaining = 0;
+                } else {
+                    remaining -= remainingInSeg;
+                    en.segIndex++;
+                    en.segT = 0;
+                    if (en.segIndex >= PATH.length - 1) { en.dead = true; en.breached = true; return; }
+                }
+            }
+            updateEnemyPosition(en);
+        }
+
+        // --- TOWER PLACEMENT ---
+        function openBuildModal(slotIndex) {
+            selectedSlot = slotIndex;
+            const slot = SLOTS[slotIndex];
+            const title = document.getElementById('buildTitle');
+            const options = document.getElementById('buildOptions');
+            options.innerHTML = '';
+
+            if (slot.tower) {
+                const base = TOWER_TYPES[slot.tower.type];
+                const lvl = slot.tower.level || 1;
+                const stats = getTowerStats(slot.tower);
+                title.textContent = `${base.icon} ${base.name} · Lv.${lvl}`;
+
+                const info = document.createElement('div');
+                info.className = 'text-xs text-gray-300 mb-3';
+                info.textContent = `Damage: ${stats.dmg} · Range: ${stats.range} · Fire rate: ${stats.fireRate}s${stats.splash ? ' · Splash ' + stats.splash : ''}${stats.slow ? ' · Slows ' + Math.round(stats.slow * 100) + '%' : ''}`;
+                options.appendChild(info);
+
+                if (lvl < MAX_TOWER_LEVEL) {
+                    const cost = upgradeCost(slot.tower);
+                    const nextStats = getTowerStats({ ...slot.tower, level: lvl + 1 });
+                    const upBtn = document.createElement('button');
+                    upBtn.className = 'tower-option glass-panel w-full flex items-center justify-between p-3 rounded-xl text-left mb-2';
+                    upBtn.disabled = gold < cost;
+                    upBtn.innerHTML = `
+                        <span class="flex-1">
+                            <span class="block font-bold text-sm">⬆ Upgrade to Lv.${lvl + 1}</span>
+                            <span class="block text-[11px] text-gray-400">DMG ${stats.dmg}→${nextStats.dmg} · Range ${stats.range}→${nextStats.range}</span>
+                        </span>
+                        <span class="text-amber-300 font-bold">${cost}g</span>
+                    `;
+                    upBtn.onclick = () => upgradeTower(slotIndex, cost);
+                    options.appendChild(upBtn);
+                } else {
+                    const maxed = document.createElement('div');
+                    maxed.className = 'text-[11px] text-emerald-400 mb-2 text-center';
+                    maxed.textContent = '✨ Max level reached';
+                    options.appendChild(maxed);
+                }
+
+                const sellBtn = document.createElement('button');
+                sellBtn.className = 'tower-option glass-panel w-full flex items-center justify-between p-3 rounded-xl text-left';
+                const refund = Math.round((slot.tower.totalInvested || base.cost) * 0.5);
+                sellBtn.innerHTML = `<span class="font-bold text-sm">💰 Sell Tower</span><span class="text-amber-300 font-bold">+${refund}g</span>`;
+                sellBtn.onclick = () => sellTower(slotIndex, refund);
+                options.appendChild(sellBtn);
+            } else {
+                title.textContent = 'Build a Tower';
+                Object.entries(TOWER_TYPES).forEach(([key, t]) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'tower-option glass-panel w-full flex items-center gap-3 p-3 rounded-xl text-left';
+                    btn.disabled = gold < t.cost;
+                    btn.innerHTML = `
+                        <span class="text-2xl">${t.icon}</span>
+                        <span class="flex-1">
+                            <span class="block text-sm font-bold">${t.name}</span>
+                            <span class="block text-[11px] text-gray-400">DMG ${t.dmg} · Range ${t.range}${t.splash ? ' · Splash' : ''}${t.slow ? ` · Slows ${Math.round(t.slow * 100)}%` : ''}</span>
+                        </span>
+                        <span class="text-amber-300 font-bold text-sm">${t.cost}g</span>
+                    `;
+                    btn.onclick = () => buildTower(slotIndex, key);
+                    options.appendChild(btn);
+                });
+            }
+            document.getElementById('buildOverlay').classList.remove('hidden');
+        }
+        function closeBuildModal() {
+            document.getElementById('buildOverlay').classList.add('hidden');
+            selectedSlot = null;
+        }
+        function buildTower(slotIndex, typeKey) {
+            const t = TOWER_TYPES[typeKey];
+            if (gold < t.cost) return;
+            gold -= t.cost;
+            SLOTS[slotIndex].tower = { type: typeKey, cooldown: 0, angle: -Math.PI / 2, flash: 0, level: 1, totalInvested: t.cost };
+            updateStatsUI();
+            playSound('build');
+            closeBuildModal();
+        }
+        function upgradeTower(slotIndex, cost) {
+            const tower = SLOTS[slotIndex].tower;
+            if (!tower || gold < cost || (tower.level || 1) >= MAX_TOWER_LEVEL) return;
+            gold -= cost;
+            tower.level = (tower.level || 1) + 1;
+            tower.totalInvested = (tower.totalInvested || TOWER_TYPES[tower.type].cost) + cost;
+            updateStatsUI();
+            playSound('build');
+            openBuildModal(slotIndex); // refresh the modal to show the new level
+        }
+        function sellTower(slotIndex, refund) {
+            SLOTS[slotIndex].tower = null;
+            gold += refund;
+            updateStatsUI();
+            playSound('build');
+            closeBuildModal();
+        }
+
+        function canvasCoords(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = CW / rect.width, scaleY = CH / rect.height;
+            return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+        }
+        canvas.addEventListener('pointerdown', e => {
+            if (!running) return;
+            e.preventDefault();
+            const { x, y } = canvasCoords(e.clientX, e.clientY);
+            for (let i = 0; i < SLOTS.length; i++) {
+                const s = SLOTS[i];
+                if (Math.hypot(x - s.x, y - s.y) < 22) {
+                    openBuildModal(i);
+                    return;
+                }
+            }
+        });
+
+        // --- MAIN LOOP ---
+        function loop(ts) {
+            if (!running) return;
+            if (lastTs === null) lastTs = ts;
+            const dt = Math.min((ts - lastTs) / 1000, 0.05);
+            lastTs = ts;
+            update(dt);
+            render();
+            if (running) requestAnimationFrame(loop);
+        }
+
+        function spawnExplosion(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 50 + Math.random() * 120;
+                particles.push({
+                    x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                    life: 0.35 + Math.random() * 0.25, age: 0, r: 2 + Math.random() * 2.5, color
+                });
+            }
+        }
+
+        function update(dt) {
+            // Build-phase countdown: no more infinite planning time between waves
+            if (!waveActive) {
+                buildTimer -= dt;
+                const btn = document.getElementById('waveBtn');
+                if (buildTimer <= 0) {
+                    beginWave();
+                } else {
+                    btn.textContent = `▶ Start Wave ${wave} (${Math.ceil(buildTimer)}s)`;
+                }
+            }
+
+            // Spawn queued enemies for the active wave
+            if (waveActive && spawnQueue.length > 0) {
+                spawnTimer += dt;
+                if (spawnTimer >= 0.6) {
+                    spawnTimer = 0;
+                    spawnEnemy(spawnQueue.shift());
+                }
+            }
+
+            // Move enemies along the path
+            enemies.forEach(en => {
+                en.phase += dt * 3;
+                const type = ENEMY_TYPES[en.type];
+                // Berserker/Overlord ramp up continuously as they lose HP — up to +80% speed near death
+                // Plain bosses (Warlord) just get a flat speed jump under 30% HP
+                const rageMul = type.berserk ? 1 + (1 - en.hp / en.maxHp) * 0.8
+                    : (type.isBoss && en.hp / en.maxHp < 0.3) ? 1.6
+                    : 1;
+                // Frost slow: multiplicative speed penalty while the timer is active
+                if (en.slowTimer > 0) {
+                    en.slowTimer -= dt;
+                    if (en.slowTimer < 0) en.slowTimer = 0;
+                }
+                const slowMul = en.slowTimer > 0 ? (1 - (en.slowFactor || 0)) : 1;
+                const segLen = segmentLength(en.segIndex);
+                en.segT += (en.speed * rageMul * slowMul * dt) / segLen;
+                if (en.segT >= 1) {
+                    en.segIndex++;
+                    en.segT = 0;
+                    if (en.segIndex >= PATH.length - 1) {
+                        en.dead = true;
+                        en.breached = true;
+                    }
+                }
+                if (!en.dead) updateEnemyPosition(en);
+
+                // Blinker: periodically teleport-skips forward, punishing slow-firing towers
+                if (type.teleports && !en.dead) {
+                    en.teleportTimer -= dt;
+                    if (en.teleportTimer <= 0) {
+                        en.teleportTimer = type.teleportEvery;
+                        spawnExplosion(en.x, en.y, type.color, 8);
+                        advanceAlongPath(en, type.teleportDist);
+                        if (!en.dead) spawnExplosion(en.x, en.y, type.color, 8);
+                    }
+                }
+
+                // Healer support unit: periodically restores HP to nearby enemies
+                if (type.healer && !en.dead) {
+                    en.healTimer += dt;
+                    if (en.healTimer >= 3) {
+                        en.healTimer = 0;
+                        let healedAny = false;
+                        enemies.forEach(other => {
+                            if (other.dead || other.hp >= other.maxHp) return;
+                            const d = Math.hypot(other.x - en.x, other.y - en.y);
+                            if (d <= 70) {
+                                other.hp = Math.min(other.maxHp, other.hp + Math.round(other.maxHp * 0.25));
+                                healedAny = true;
+                            }
+                        });
+                        if (healedAny) spawnExplosion(en.x, en.y, '#34d399', 10);
+                    }
+                }
+
+                // Cloaked Stalker: flickers between targetable and fully hidden
+                if (type.cloak && !en.dead) {
+                    en.cloakTimer -= dt;
+                    if (en.cloakTimer <= 0) {
+                        en.cloaked = !en.cloaked;
+                        en.cloakTimer = en.cloaked ? type.cloakHidden : type.cloakVisible;
+                    }
+                }
+            });
+
+            // Handle breaches
+            enemies.forEach(en => {
+                if (en.breached) {
+                    lives -= ENEMY_TYPES[en.type].damage;
+                    shakeTime = 0.25;
+                    playSound('breach');
+                    spawnExplosion(BASE_CORE.x, BASE_CORE.y, '#ef4444', 10);
+                }
+            });
+            enemies = enemies.filter(en => !en.dead);
+            updateStatsUI();
+            if (lives <= 0) { lives = 0; updateStatsUI(); return endGame(); }
+
+            // Towers fire at nearest enemy in range
+            SLOTS.forEach(slot => {
+                if (!slot.tower) return;
+                const cfg = getTowerStats(slot.tower);
+                slot.tower.cooldown -= dt;
+                let target = null, bestDist = cfg.range;
+                for (const en of enemies) {
+                    if (en.cloaked) continue;
+                    const d = Math.hypot(en.x - slot.x, en.y - slot.y);
+                    if (d <= bestDist) { bestDist = d; target = en; }
+                }
+                if (target) {
+                    // Smoothly rotate the barrel toward the target every frame,
+                    // whether or not this tower is actually ready to fire.
+                    const desired = Math.atan2(target.y - slot.y, target.x - slot.x);
+                    let diff = desired - slot.tower.angle;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    slot.tower.angle += diff * Math.min(1, dt * 12);
+
+                    if (slot.tower.cooldown <= 0) {
+                        slot.tower.cooldown = cfg.fireRate;
+                        slot.tower.flash = 0.08;
+                        projectiles.push({
+                            x: slot.x, y: slot.y, prevX: slot.x, prevY: slot.y, targetId: target.id,
+                            speed: 340, dmg: cfg.dmg, splash: cfg.splash, color: cfg.color,
+                            slow: cfg.slow || 0, slowDuration: cfg.slowDuration || 0
+                        });
+                        playSound('shoot');
+                    }
+                }
+                if (slot.tower.flash > 0) slot.tower.flash = Math.max(0, slot.tower.flash - dt);
+            });
+
+            // Move projectiles, apply damage on arrival
+            projectiles.forEach(p => {
+                p.prevX = p.x; p.prevY = p.y;
+                const target = enemies.find(e => e.id === p.targetId);
+                if (!target) { p.dead = true; return; }
+                const dx = target.x - p.x, dy = target.y - p.y;
+                const dist = Math.hypot(dx, dy);
+                const step = p.speed * dt;
+                if (dist <= step) {
+                    p.x = target.x; p.y = target.y;
+                    applyDamage(target, p.dmg, p.color, false);
+                    if (p.slow > 0) {
+                        target.slowTimer = Math.max(target.slowTimer || 0, p.slowDuration);
+                        target.slowFactor = p.slow;
+                    }
+                    if (p.splash > 0) {
+                        enemies.forEach(other => {
+                            if (other.id !== target.id && !other.dead) {
+                                const od = Math.hypot(other.x - p.x, other.y - p.y);
+                                if (od <= p.splash) applyDamage(other, Math.ceil(p.dmg * 0.6), p.color, true);
+                            }
+                        });
+                        spawnExplosion(p.x, p.y, p.color, 12);
+                    }
+                    p.dead = true;
+                } else {
+                    p.x += (dx / dist) * step;
+                    p.y += (dy / dist) * step;
+                }
+            });
+            projectiles = projectiles.filter(p => !p.dead);
+            enemies = enemies.filter(en => !en.dead);
+
+            // Age particles / shake / banner
+            particles.forEach(p => { p.age += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.94; p.vy *= 0.94; });
+            particles = particles.filter(p => p.age < p.life);
+            floatingTexts.forEach(f => { f.age += dt; });
+            floatingTexts = floatingTexts.filter(f => f.age < f.life);
+            if (shakeTime > 0) shakeTime = Math.max(0, shakeTime - dt);
+            if (waveBanner) { waveBanner.t += dt; if (waveBanner.t > 1.4) waveBanner = null; }
+
+            // Wave clear check
+            if (waveActive && spawnQueue.length === 0 && enemies.length === 0) {
+                waveActive = false;
+                buildTimer = BUILD_PHASE_LIMIT;
+                const bonus = 20 + wave * 5;
+                gold += bonus;
+                score += wave * 100;
+                wave++;
+                updateStatsUI();
+                document.getElementById('waveBtn').disabled = false;
+                document.getElementById('waveBtn').textContent = `▶ Start Wave ${wave} (${BUILD_PHASE_LIMIT}s)`;
+                refreshUpcomingPreview();
+                playSound('win');
+            }
+        }
+
+        function applyDamage(en, dmg, color, isSplash = false) {
+            const type = ENEMY_TYPES[en.type];
+
+            // Phantom: chance to dodge single-target shots entirely (splash always hits)
+            if (type.dodgeChance && !isSplash && Math.random() < type.dodgeChance) {
+                floatingTexts.push({ x: en.x, y: en.y, text: 'MISS', age: 0, life: 0.6, miss: true });
+                return;
+            }
+
+            let finalDmg = (type.shielded && !isSplash) ? Math.max(1, Math.round(dmg * 0.5)) : dmg;
+            if (type.armor) finalDmg = Math.max(1, finalDmg - type.armor);
+            en.hp -= finalDmg;
+            spawnExplosion(en.x, en.y, color, 4);
+            playSound('hit');
+            if (en.hp <= 0 && !en.dead) {
+                en.dead = true;
+                kills++;
+                const reward = ENEMY_TYPES[en.type].reward;
+                gold += reward;
+                score += 5;
+                spawnExplosion(en.x, en.y, ENEMY_TYPES[en.type].color, 14);
+                floatingTexts.push({ x: en.x, y: en.y, text: `+${reward}g`, age: 0, life: 0.8 });
+                if (type.splitsInto) spawnSplitChildren(en);
+                updateStatsUI();
+            }
+        }
+
+        // Splitter: on death, breaks into weaker drones that continue from the
+        // same point on the path (rather than restarting from the entrance).
+        function spawnSplitChildren(en) {
+            const n = ENEMY_TYPES[en.type].splitsInto || 0;
+            for (let i = 0; i < n; i++) {
+                const hp = Math.max(1, Math.round(en.maxHp * 0.4));
+                enemies.push({
+                    id: enemyIdCounter++,
+                    type: 'drone',
+                    segIndex: en.segIndex, segT: en.segT,
+                    x: en.x, y: en.y,
+                    hp, maxHp: hp,
+                    speed: ENEMY_TYPES.drone.speed * 1.1,
+                    phase: Math.random() * Math.PI * 2,
+                    healTimer: 0,
+                    dead: false
+                });
+            }
+        }
+
+        function endGame() {
+            running = false;
+            playSound('breach');
+            score += kills * 5;
+            let isNewBest = false;
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('basetower_best', bestScore);
+                isNewBest = true;
+            }
+            storeTodayResult(score, wave, kills);
+            document.getElementById('overStats').textContent =
+                `Wave: ${wave} · Kills: ${kills} · Score: ${score}${isNewBest ? ' · 🎉 New Best!' : ''}`;
+            document.getElementById('overOverlay').classList.remove('hidden');
+            if (isNewBest) fireConfetti();
+            refreshActionButtons();
+        }
+
+        function fireConfetti() {
+            const colors = ['#a855f7', '#ec4899', '#6366f1', '#facc15', '#22d3ee'];
+            for (let i = 0; i < 60; i++) {
+                const piece = document.createElement('div');
+                piece.style.position = 'fixed'; piece.style.top = '-10px';
+                piece.style.left = Math.random() * 100 + 'vw';
+                piece.style.width = (4 + Math.random() * 5) + 'px';
+                piece.style.height = (6 + Math.random() * 8) + 'px';
+                piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+                piece.style.borderRadius = '2px'; piece.style.zIndex = '60'; piece.style.pointerEvents = 'none';
+                const duration = 1.8 + Math.random() * 1.4;
+                piece.style.transition = `transform ${duration}s linear, opacity ${duration}s linear`;
+                document.body.appendChild(piece);
+                requestAnimationFrame(() => { piece.style.transform = `translateY(110vh) rotate(540deg)`; piece.style.opacity = '0.2'; });
+                setTimeout(() => piece.remove(), duration * 1000 + 200);
+            }
+        }
+
+        // --- RENDER ---
+        function drawEnemyDrone(x, y, t, typeKey, en) {
+            const type = ENEMY_TYPES[typeKey];
+            ctx.save();
+            ctx.translate(x, y);
+            const pulse = 1 + Math.sin(t * 4) * 0.06;
+            ctx.scale(pulse * type.scale, pulse * type.scale);
+
+            // Cloaked Stalker: nearly invisible while hidden, a faint silver
+            // shimmer outline is all that gives it away
+            if (type.cloak && en?.cloaked) {
+                ctx.globalAlpha = 0.18;
+                ctx.strokeStyle = 'rgba(226,232,240,0.6)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const a = (Math.PI / 3) * i - Math.PI / 2;
+                    const r9 = (i % 2 === 0) ? 9.5 : 7.3; const px = Math.cos(a) * r9, py = Math.sin(a) * r9;
+                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath(); ctx.stroke();
+                ctx.restore();
+                return; // skip the rest of the body while cloaked
+            }
+            if (type.cloak && !en?.cloaked) {
+                // Shimmering re-materialization edge while visible
+                ctx.shadowColor = '#e2e8f0'; ctx.shadowBlur = 6;
+            }
+
+            // Phantom: flickering opacity + a faint ghost trail hints at its dodge chance
+            if (type.dodgeChance) {
+                ctx.globalAlpha = 0.55 + Math.abs(Math.sin(t * 3)) * 0.4;
+                ctx.save();
+                ctx.globalAlpha *= 0.25;
+                ctx.translate(-Math.cos(t) * 4, -Math.sin(t) * 4);
+                ctx.fillStyle = type.color;
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const a = (Math.PI / 3) * i - Math.PI / 2;
+                    const r9 = (i % 2 === 0) ? 9.5 : 7.3; const px = Math.cos(a) * r9, py = Math.sin(a) * r9;
+                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath(); ctx.fill();
+                ctx.restore();
+            }
+
+            // Juggernaut: double armor ring + rivets for an unmistakably heavy silhouette
+            if (type.armor) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+                ctx.lineWidth = 1.4;
+                ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath(); ctx.arc(0, 0, 11.5, 0, Math.PI * 2); ctx.stroke();
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                for (let i = 0; i < 6; i++) {
+                    const a = (Math.PI / 3) * i;
+                    ctx.beginPath();
+                    ctx.arc(Math.cos(a) * 12.7, Math.sin(a) * 12.7, 1, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Fast: swept speed-streak trail (reads as motion even when static)
+            if (typeKey === 'fast' || typeKey === 'rusher') {
+                ctx.strokeStyle = 'rgba(244,114,182,0.45)';
+                ctx.lineWidth = 1.6;
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(-9 - i * 4, -3 + i * 3);
+                    ctx.lineTo(-15 - i * 4, -3 + i * 3);
+                    ctx.stroke();
+                }
+            }
+
+            // Bomber: rotating hazard-stripe ring warns of its heavier breach damage
+            if (type.bomber) {
+                ctx.save();
+                ctx.rotate(t * 0.9);
+                ctx.strokeStyle = '#fbbf24';
+                ctx.lineWidth = 2.2;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath(); ctx.arc(0, 0, 12.5, 0, Math.PI * 2); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.restore();
+            }
+
+            // Reaper: curved twin blades sweeping past its sides — signals it's
+            // both fast AND dangerous, unlike the usual slow/tough archetype
+            if (typeKey === 'reaper') {
+                ctx.fillStyle = type.color;
+                ctx.shadowColor = type.color; ctx.shadowBlur = 6;
+                [-1, 1].forEach(side => {
+                    ctx.save();
+                    ctx.scale(1, side);
+                    ctx.beginPath();
+                    ctx.moveTo(6, 8);
+                    ctx.quadraticCurveTo(20, 10, 17, 20);
+                    ctx.quadraticCurveTo(12, 15, 8, 12);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                });
+                ctx.shadowBlur = 0;
+            }
+
+            // Berserker: glowing damage cracks that spread and brighten as it loses HP
+            if (type.berserk && en) {
+                const hurt = 1 - en.hp / en.maxHp;
+                if (hurt > 0.05) {
+                    ctx.strokeStyle = `rgba(251,146,60,${0.4 + hurt * 0.5})`;
+                    ctx.lineWidth = 1;
+                    ctx.shadowColor = '#fb923c'; ctx.shadowBlur = 4 + hurt * 6;
+                    const crackCount = Math.ceil(hurt * 4);
+                    for (let i = 0; i < crackCount; i++) {
+                        const a = (Math.PI / 2) * i + 0.4;
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(Math.cos(a) * 8, Math.sin(a) * 8);
+                        ctx.stroke();
+                    }
+                    ctx.shadowBlur = 0;
+                }
+            }
+
+            // Blinker: constant digital jitter that intensifies right before it teleports
+            if (type.teleports && en) {
+                const chargeUp = Math.max(0, 1 - (en.teleportTimer / 0.4));
+                if (chargeUp > 0 || Math.random() < 0.15) {
+                    const jitter = 1 + chargeUp * 2;
+                    ctx.translate((Math.random() - 0.5) * jitter, (Math.random() - 0.5) * jitter);
+                }
+            }
+
+            // Guardian: rotating hexagonal shield ring (visualizes the damage-reduction mechanic)
+            if (type.shielded) {
+                ctx.save();
+                ctx.rotate(t * 1.3);
+                ctx.strokeStyle = 'rgba(34,211,238,0.55)';
+                ctx.lineWidth = 1.6;
+                ctx.setLineDash([4, 3]);
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const a = (Math.PI / 3) * i;
+                    const px = Math.cos(a) * 15, py = Math.sin(a) * 15;
+                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.restore();
+            }
+
+            // Healer: soft pulsing aura (visualizes its heal-pulse radius)
+            if (type.healer) {
+                const auraR = 9 + Math.sin(t * 2.2) * 3;
+                const auraGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, auraR);
+                auraGrad.addColorStop(0, 'rgba(52,211,153,0.28)');
+                auraGrad.addColorStop(1, 'rgba(52,211,153,0)');
+                ctx.fillStyle = auraGrad;
+                ctx.beginPath(); ctx.arc(0, 0, auraR, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // Corrupting aura — a dim dark-purple wisp behind the body, giving every
+            // enemy a faint "leaking energy" dread even before you see its details
+            const corruptR = 13 + Math.sin(t * 1.6) * 1.5;
+            const corruptGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, corruptR);
+            corruptGrad.addColorStop(0, 'rgba(30,10,40,0.35)');
+            corruptGrad.addColorStop(1, 'rgba(30,10,40,0)');
+            ctx.fillStyle = corruptGrad;
+            ctx.beginPath(); ctx.arc(0, 0, corruptR, 0, Math.PI * 2); ctx.fill();
+
+            // Drop shadow layer — a dim offset jagged silhouette behind the body for depth
+            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const a = (Math.PI / 3) * i - Math.PI / 2;
+                const r = (i % 2 === 0) ? 9.5 : 7.3;
+                const px = Math.cos(a) * r + 1.2, py = Math.sin(a) * r + 1.6;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.closePath(); ctx.fill();
+
+            // Legs: curved claw-like blades instead of straight spikes — more organic/predatory
+            ctx.fillStyle = type.color;
+            for (let i = 0; i < 6; i++) {
+                const ang = (Math.PI / 3) * i - Math.PI / 2 + Math.PI / 6;
+                const perp = ang + Math.PI / 2;
+                const reach = (typeKey === 'tank' || typeKey === 'brute') ? 15 : 12;
+                const bx = Math.cos(ang) * 8, by = Math.sin(ang) * 8;
+                const tx = Math.cos(ang) * reach, ty = Math.sin(ang) * reach;
+                const curveAng = ang + 0.35; // claws curl slightly, not straight spikes
+                const cx = Math.cos(curveAng) * (reach * 0.7), cy = Math.sin(curveAng) * (reach * 0.7);
+                const w = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(bx + Math.cos(perp) * w, by + Math.sin(perp) * w);
+                ctx.lineTo(bx - Math.cos(perp) * w, by - Math.sin(perp) * w);
+                ctx.quadraticCurveTo(cx, cy, tx, ty);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Tank: extra armor ring for a visibly heavier, sturdier silhouette
+            if (typeKey === 'tank' || typeKey === 'brute') {
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1.3;
+                ctx.beginPath(); ctx.arc(0, 0, 12.5, 0, Math.PI * 2); ctx.stroke();
+            }
+
+            // Hex chassis with gradient fill — jagged/crystalline silhouette, not a clean hexagon
+            ctx.shadowColor = type.color; ctx.shadowBlur = 7;
+            const bodyGrad = ctx.createRadialGradient(0, -2, 1, 0, 0, 9);
+            bodyGrad.addColorStop(0, type.color);
+            bodyGrad.addColorStop(0.6, type.darkColor);
+            bodyGrad.addColorStop(1, '#000');
+            ctx.fillStyle = bodyGrad;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const ang = (Math.PI / 3) * i - Math.PI / 2;
+                const r = (i % 2 === 0) ? 9.5 : 7.3;
+                const px = Math.cos(ang) * r, py = Math.sin(ang) * r;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.closePath(); ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Rim-light: a bright specular arc across the top for a glossy, polished finish
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(0, -1, 7, Math.PI * 1.1, Math.PI * 1.9);
+            ctx.stroke();
+
+            // Core: medical cross for healer, diamond for guardian, twin dots for
+            // splitter (hints it'll break into two), narrow predator eyes for everything else
+            ctx.fillStyle = '#fff';
+            ctx.shadowColor = type.color; ctx.shadowBlur = 8;
+            if (type.healer) {
+                ctx.fillRect(-1, -3.2, 2, 6.4);
+                ctx.fillRect(-3.2, -1, 6.4, 2);
+            } else if (type.shielded) {
+                ctx.beginPath();
+                ctx.moveTo(0, -3.4); ctx.lineTo(3.4, 0); ctx.lineTo(0, 3.4); ctx.lineTo(-3.4, 0);
+                ctx.closePath(); ctx.fill();
+            } else if (type.splitsInto) {
+                ctx.beginPath(); ctx.arc(-2.2, 0, 2, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(2.2, 0, 2, 0, Math.PI * 2); ctx.fill();
+            } else {
+                // Narrow glowing eyes, slightly angled inward — reads as a predator's gaze
+                ctx.save();
+                ctx.rotate(-0.18);
+                ctx.beginPath(); ctx.ellipse(-2.1, -0.3, 1.5, 0.7, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+                ctx.save();
+                ctx.rotate(0.18);
+                ctx.beginPath(); ctx.ellipse(2.1, -0.3, 1.5, 0.7, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            }
+            ctx.shadowBlur = 0;
+
+            // Frost overlay: a pale icy tint + tiny crystal flecks while slowed
+            if (en && en.slowTimer > 0) {
+                ctx.fillStyle = 'rgba(224,242,254,0.32)';
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const ang = (Math.PI / 3) * i - Math.PI / 2;
+                    const r = (i % 2 === 0) ? 9.5 : 7.3;
+                    const px = Math.cos(ang) * r, py = Math.sin(ang) * r;
+                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath(); ctx.fill();
+                ctx.strokeStyle = 'rgba(224,242,254,0.7)';
+                ctx.lineWidth = 0.8;
+                for (let i = 0; i < 3; i++) {
+                    const a = (Math.PI * 2 / 3) * i + t;
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(a) * 3, Math.sin(a) * 3);
+                    ctx.lineTo(Math.cos(a) * 7, Math.sin(a) * 7);
+                    ctx.stroke();
+                }
+            }
+
+            ctx.restore();
+            const barW = 20;
+            ctx.fillStyle = 'rgba(0,0,0,0.45)';
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(x - barW / 2, y - 16, barW, 3, 1.5) : ctx.rect(x - barW / 2, y - 16, barW, 3);
+            ctx.fill();
+        }
+
+        // Warlord (boss): a distinct, more menacing silhouette — spiked crown,
+        // rotating danger ring, and a color shift + bigger health bar when enraged.
+        function drawWarlord(x, y, t, en) {
+            const type = ENEMY_TYPES[en.type];
+            const enraged = en.hp / en.maxHp < 0.3;
+            ctx.save();
+            ctx.translate(x, y);
+            const pulse = 1 + Math.sin(t * 3) * 0.05;
+            ctx.scale(pulse * type.scale, pulse * type.scale);
+
+            // Overlord: an extra rotating shield ring further out (it takes reduced
+            // single-target damage the whole fight, unlike Warlord's late-game rage-only threat)
+            if (type.shielded) {
+                ctx.save();
+                ctx.rotate(-t * 0.9);
+                ctx.strokeStyle = 'rgba(34,211,238,0.5)';
+                ctx.lineWidth = 1.8;
+                ctx.setLineDash([5, 4]);
+                ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.restore();
+            }
+
+            ctx.save();
+            ctx.rotate(t * 0.8);
+            ctx.strokeStyle = enraged ? 'rgba(248,113,113,0.6)' : `${type.color}80`;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+
+            // Drop shadow for the same grounded depth as regular enemies
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const a = (Math.PI / 3) * i - Math.PI / 2;
+                const r = (i % 2 === 0) ? 11.5 : 8.8;
+                const px = Math.cos(a) * r + 1.5, py = Math.sin(a) * r + 2;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.closePath(); ctx.fill();
+
+            ctx.strokeStyle = enraged ? '#f87171' : type.color;
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 8; i++) {
+                const a = (Math.PI / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a) * 10, Math.sin(a) * 10);
+                ctx.lineTo(Math.cos(a) * 16, Math.sin(a) * 16);
+                ctx.stroke();
+            }
+
+            ctx.shadowColor = enraged ? '#ef4444' : type.color;
+            ctx.shadowBlur = 12;
+            const bodyGrad = ctx.createRadialGradient(0, -2, 1, 0, 0, 11);
+            bodyGrad.addColorStop(0, enraged ? '#fca5a5' : '#fef3c7');
+            bodyGrad.addColorStop(0.6, enraged ? '#991b1b' : type.darkColor);
+            bodyGrad.addColorStop(1, '#000');
+            ctx.fillStyle = bodyGrad;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const a = (Math.PI / 3) * i - Math.PI / 2;
+                const r = (i % 2 === 0) ? 11.5 : 8.8;
+                const px = Math.cos(a) * r, py = Math.sin(a) * r;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.closePath(); ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Glossy rim-light for a polished, non-flat finish
+            ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(0, -1, 8.5, Math.PI * 1.1, Math.PI * 1.9);
+            ctx.stroke();
+
+            // Glowing predator eyes instead of a single dot
+            ctx.fillStyle = '#fff';
+            ctx.shadowColor = enraged ? '#ef4444' : type.color; ctx.shadowBlur = 10;
+            ctx.save(); ctx.rotate(-0.16);
+            ctx.beginPath(); ctx.ellipse(-2.6, -0.4, 1.9, 0.9, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+            ctx.save(); ctx.rotate(0.16);
+            ctx.beginPath(); ctx.ellipse(2.6, -0.4, 1.9, 0.9, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+            ctx.shadowBlur = 0;
+            ctx.restore();
+
+            // Bigger health bar for the boss
+            const barW = 34;
+            ctx.fillStyle = 'rgba(255,255,255,0.15)';
+            ctx.fillRect(x - barW / 2, y - 24, barW, 5);
+            const hpGrad = ctx.createLinearGradient(x - barW / 2, 0, x + barW / 2, 0);
+            hpGrad.addColorStop(0, '#f87171'); hpGrad.addColorStop(1, type.color);
+            ctx.fillStyle = hpGrad;
+            ctx.fillRect(x - barW / 2, y - 24, barW * Math.max(0, en.hp / en.maxHp), 5);
+        }
+
+        function drawTower(slot) {
+            const tw = slot.tower;
+            const t = TOWER_TYPES[tw.type];
+            const angle = tw.angle ?? -Math.PI / 2;
+            const lvl = tw.level || 1;
+            const headScale = 1 + (lvl - 1) * 0.11; // the turret head visibly grows as it levels
+            ctx.save();
+            ctx.translate(slot.x, slot.y);
+
+            // Base pad (shared language with the empty-slot hex pads)
+            ctx.shadowColor = t.color;
+            ctx.shadowBlur = tw.flash > 0 ? 16 : 7;
+            const baseGrad = ctx.createRadialGradient(0, -2, 1, 0, 0, 13);
+            baseGrad.addColorStop(0, 'rgba(255,255,255,0.18)');
+            baseGrad.addColorStop(1, 'rgba(15,23,42,0.95)');
+            ctx.fillStyle = baseGrad;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const a = (Math.PI / 3) * i - Math.PI / 2;
+                const px = Math.cos(a) * 13, py = Math.sin(a) * 13;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = t.color;
+            ctx.lineWidth = 1.6;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Veteran ring — a second, brighter outline once a tower has been
+            // upgraded past its base form (level 3+)
+            if (lvl >= 3) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const a = (Math.PI / 3) * i - Math.PI / 2;
+                    const px = Math.cos(a) * 15.5, py = Math.sin(a) * 15.5;
+                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            }
+
+            // Max-level halo — a slowly rotating energy ring once fully evolved
+            if (lvl >= MAX_TOWER_LEVEL) {
+                ctx.save();
+                ctx.rotate(globalT * 1.2);
+                ctx.strokeStyle = t.color;
+                ctx.globalAlpha = 0.6;
+                ctx.lineWidth = 1.4;
+                ctx.setLineDash([3, 4]);
+                ctx.beginPath(); ctx.arc(0, 0, 19, 0, Math.PI * 2); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.globalAlpha = 1;
+                ctx.restore();
+            }
+
+            // Rotating turret head — silhouette differs per type, and grows with level
+            ctx.rotate(angle);
+            ctx.scale(headScale, headScale);
+            ctx.fillStyle = t.color;
+            ctx.shadowColor = t.color;
+            ctx.shadowBlur = 5;
+
+            if (tw.type === 'turret') {
+                // Compact twin-barrel design — a third barrel appears at level 4+
+                ctx.fillRect(2, -5, 12, 3);
+                ctx.fillRect(2, 2, 12, 3);
+                if (lvl >= 4) ctx.fillRect(4, -1, 10, 2);
+                ctx.beginPath(); ctx.arc(0, 0, 5.5, 0, Math.PI * 2); ctx.fill();
+            } else if (tw.type === 'cannon') {
+                // Stout single barrel with a hex core — gains reinforcing bands as it levels
+                ctx.fillRect(0, -4.5, 12, 9);
+                if (lvl >= 3) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+                    ctx.fillRect(3, -4.5, 1.5, 9);
+                    ctx.fillRect(7, -4.5, 1.5, 9);
+                    ctx.fillStyle = t.color;
+                }
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const a = (Math.PI / 3) * i;
+                    const px = Math.cos(a) * 7, py = Math.sin(a) * 7;
+                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.fill();
+            } else if (tw.type === 'sniper') {
+                // Long thin barrel with a scope glint — barrel extends with level
+                ctx.fillRect(0, -1.6, 19 + (lvl - 1) * 1.5, 3.2);
+                ctx.beginPath(); ctx.arc(0, 0, 4.5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.arc(16 + (lvl - 1) * 1.5, 0, 1.6, 0, Math.PI * 2); ctx.fill();
+            } else if (tw.type === 'frost') {
+                // Radiating ice crystal spikes — gains a second, longer ring of spikes at level 4+
+                for (let i = 0; i < 5; i++) {
+                    const a = (Math.PI * 2 / 5) * i;
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(a) * 2, Math.sin(a) * 2);
+                    ctx.lineTo(Math.cos(a - 0.12) * 8, Math.sin(a - 0.12) * 8);
+                    ctx.lineTo(Math.cos(a) * 11, Math.sin(a) * 11);
+                    ctx.lineTo(Math.cos(a + 0.12) * 8, Math.sin(a + 0.12) * 8);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                if (lvl >= 4) {
+                    ctx.globalAlpha = 0.7;
+                    for (let i = 0; i < 5; i++) {
+                        const a = (Math.PI * 2 / 5) * i + Math.PI / 5;
+                        ctx.beginPath();
+                        ctx.moveTo(Math.cos(a) * 2, Math.sin(a) * 2);
+                        ctx.lineTo(Math.cos(a - 0.1) * 6, Math.sin(a - 0.1) * 6);
+                        ctx.lineTo(Math.cos(a) * 8.5, Math.sin(a) * 8.5);
+                        ctx.lineTo(Math.cos(a + 0.1) * 6, Math.sin(a + 0.1) * 6);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+                }
+                ctx.fillStyle = '#e0f2fe';
+                ctx.beginPath(); ctx.arc(0, 0, 3.5, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.shadowBlur = 0;
+            ctx.restore();
+
+            // Level pips beneath the base (not rotated with the barrel)
+            ctx.save();
+            ctx.translate(slot.x, slot.y);
+            const pipSpacing = 6;
+            const startX = -((lvl - 1) * pipSpacing) / 2;
+            for (let i = 0; i < lvl; i++) {
+                ctx.fillStyle = i < lvl ? '#fbbf24' : 'rgba(255,255,255,0.2)';
+                ctx.beginPath();
+                ctx.arc(startX + i * pipSpacing, 17, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        function drawSlot(slot) {
+            ctx.save();
+            ctx.translate(slot.x, slot.y);
+            const glow = ctx.createRadialGradient(0, 0, 1, 0, 0, 14);
+            glow.addColorStop(0, 'rgba(139,92,246,0.22)');
+            glow.addColorStop(1, 'rgba(139,92,246,0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.setLineDash([3, 4]);
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const a = (Math.PI / 3) * i - Math.PI / 2;
+                const px = Math.cos(a) * 11, py = Math.sin(a) * 11;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(-4, 0); ctx.lineTo(4, 0);
+            ctx.moveTo(0, -4); ctx.lineTo(0, 4);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawBaseCore(t) {
+            ctx.save();
+            ctx.translate(BASE_CORE.x, BASE_CORE.y);
+
+            // Ambient halo
+            const halo = ctx.createRadialGradient(0, 0, 4, 0, 0, 34);
+            halo.addColorStop(0, 'rgba(59,130,246,0.22)');
+            halo.addColorStop(1, 'rgba(59,130,246,0)');
+            ctx.fillStyle = halo;
+            ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fill();
+
+            // Slowly rotating protective ring
+            ctx.save();
+            ctx.rotate(t * 0.4);
+            ctx.strokeStyle = 'rgba(147,197,253,0.4)';
+            ctx.lineWidth = 1.4;
+            ctx.setLineDash([2, 5]);
+            ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+
+            const pulse = 1 + Math.sin(t * 2) * 0.08;
+            ctx.scale(pulse, pulse);
+            ctx.shadowColor = 'rgba(59,130,246,0.8)'; ctx.shadowBlur = 16;
+            const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, 18);
+            grad.addColorStop(0, '#93c5fd');
+            grad.addColorStop(0.6, '#3b82f6');
+            grad.addColorStop(1, '#1e3a8a');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const ang = (Math.PI / 3) * i - Math.PI / 2;
+                const px = Math.cos(ang) * 17, py = Math.sin(ang) * 17;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.restore();
+        }
+
+        let globalT = 0;
+        const bgStars = Array.from({ length: 34 }, () => ({
+            x: Math.random() * CW,
+            y: Math.random() * CH,
+            r: 0.6 + Math.random() * 1.4,
+            twinkleSpeed: 1 + Math.random() * 2,
+            twinkleOffset: Math.random() * Math.PI * 2
+        }));
+        function render() {
+            globalT += 1 / 60;
+            ctx.save();
+            if (shakeTime > 0) {
+                const mag = 6 * (shakeTime / 0.25);
+                ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+            }
+            ctx.clearRect(-10, -10, CW + 20, CH + 20);
+
+            const bgGrad = ctx.createLinearGradient(0, 0, 0, CH);
+            bgGrad.addColorStop(0, 'rgba(46,16,101,0.55)');
+            bgGrad.addColorStop(0.55, 'rgba(30,10,70,0.5)');
+            bgGrad.addColorStop(1, 'rgba(2,6,23,0.8)');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, CW, CH);
+
+            // Soft nebula glow blooms for atmospheric depth
+            const nebula1 = ctx.createRadialGradient(CW * 0.15, CH * 0.1, 0, CW * 0.15, CH * 0.1, 170);
+            nebula1.addColorStop(0, 'rgba(168,85,247,0.16)');
+            nebula1.addColorStop(1, 'rgba(168,85,247,0)');
+            ctx.fillStyle = nebula1;
+            ctx.fillRect(0, 0, CW, CH);
+            const nebula2 = ctx.createRadialGradient(CW * 0.9, CH * 0.55, 0, CW * 0.9, CH * 0.55, 190);
+            nebula2.addColorStop(0, 'rgba(59,130,246,0.14)');
+            nebula2.addColorStop(1, 'rgba(59,130,246,0)');
+            ctx.fillStyle = nebula2;
+            ctx.fillRect(0, 0, CW, CH);
+            const nebula3 = ctx.createRadialGradient(CW * 0.25, CH * 0.92, 0, CW * 0.25, CH * 0.92, 160);
+            nebula3.addColorStop(0, 'rgba(236,72,153,0.1)');
+            nebula3.addColorStop(1, 'rgba(236,72,153,0)');
+            ctx.fillStyle = nebula3;
+            ctx.fillRect(0, 0, CW, CH);
+
+            // Twinkling starfield
+            bgStars.forEach(s => {
+                const tw = 0.35 + Math.abs(Math.sin(globalT * s.twinkleSpeed + s.twinkleOffset)) * 0.5;
+                ctx.fillStyle = `rgba(255,255,255,${tw})`;
+                ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+            });
+
+            // Path — outer soft glow, mid channel, energy-flow dashes animating toward the core
+            ctx.strokeStyle = 'rgba(139,92,246,0.18)';
+            ctx.lineWidth = 34;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            PATH.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+            ctx.stroke();
+            ctx.strokeStyle = 'rgba(139,92,246,0.35)';
+            ctx.lineWidth = 26;
+            ctx.beginPath();
+            PATH.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+            ctx.stroke();
+            ctx.strokeStyle = 'rgba(168,85,247,0.55)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([8, 6]);
+            ctx.lineDashOffset = -globalT * 26; // flows toward the Base Core
+            ctx.beginPath();
+            PATH.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.lineDashOffset = 0;
+
+            // Slots + towers
+            SLOTS.forEach(s => { if (!s.tower) drawSlot(s); else drawTower(s); });
+
+            // Base core
+            drawBaseCore(globalT);
+
+            // Enemies
+            enemies.forEach(en => {
+                if (ENEMY_TYPES[en.type]?.isBoss) drawWarlord(en.x, en.y, en.phase, en);
+                else drawEnemyDrone(en.x, en.y, en.phase, en.type, en);
+            });
+            enemies.forEach(en => {
+                if (ENEMY_TYPES[en.type]?.isBoss) return; // drawWarlord() already drew its own bigger bar
+                if (en.cloaked) return; // fully hidden while cloaked
+                const barW = 20;
+                const pct = Math.max(0, en.hp / en.maxHp);
+                const fillW = barW * pct;
+                if (fillW <= 0) return;
+                const hpColor = pct > 0.5 ? '#4ade80' : pct > 0.25 ? '#facc15' : '#f87171';
+                ctx.fillStyle = hpColor;
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(en.x - barW / 2, en.y - 16, fillW, 3, 1.5);
+                else ctx.rect(en.x - barW / 2, en.y - 16, fillW, 3);
+                ctx.fill();
+            });
+
+            // Projectiles (glowing core + trail toward where it came from)
+            projectiles.forEach(p => {
+                ctx.strokeStyle = p.color;
+                ctx.globalAlpha = 0.5;
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(p.prevX ?? p.x, p.prevY ?? p.y);
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+
+                ctx.shadowColor = p.color; ctx.shadowBlur = 8;
+                ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Particles
+            particles.forEach(p => {
+                const alpha = 1 - p.age / p.life;
+                ctx.globalAlpha = Math.max(0, alpha);
+                ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            // Floating "+Xg" gold popups / "MISS" dodge popups
+            floatingTexts.forEach(f => {
+                const alpha = 1 - f.age / f.life;
+                ctx.globalAlpha = Math.max(0, alpha);
+                ctx.textAlign = 'center';
+                ctx.font = '900 12px Outfit, sans-serif';
+                ctx.shadowColor = f.miss ? 'rgba(129,140,248,0.8)' : 'rgba(250,204,21,0.8)';
+                ctx.shadowBlur = 6;
+                ctx.fillStyle = f.miss ? '#c7d2fe' : '#fde68a';
+                ctx.fillText(f.text, f.x, f.y - 14 - f.age * 20);
+                ctx.shadowBlur = 0;
+            });
+            ctx.globalAlpha = 1;
+
+            // Wave banner
+            if (waveBanner) {
+                const t = waveBanner.t;
+                const alpha = t < 0.2 ? t / 0.2 : t > 1.1 ? Math.max(0, (1.4 - t) / 0.3) : 1;
+                const scale = t < 0.2 ? 0.8 + (t / 0.2) * 0.2 : 1;
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.translate(CW / 2, CH * 0.4);
+                ctx.scale(scale, scale);
+                ctx.textAlign = 'center';
+                ctx.font = '900 22px Outfit, sans-serif';
+                ctx.shadowColor = 'rgba(168,85,247,0.8)'; ctx.shadowBlur = 18;
+                ctx.fillStyle = '#f5f3ff';
+                ctx.fillText(waveBanner.text, 0, 0);
+                ctx.shadowBlur = 0;
+                ctx.restore();
+                ctx.globalAlpha = 1;
+            }
+
+            ctx.restore();
+        }
+
+        // Initial static render (before Start) so the board isn't blank
+        render();
+
+        // --- RESULT PERSISTENCE (per device, per UTC day) ---
+        function todayId() { return new Date().toISOString().slice(0, 10); }
+        function todayResultKey() { return `basetower_result_${todayId()}`; }
+        function storeTodayResult(sc, wv, kl) {
+            const existing = getTodayResult();
+            if (!existing || sc > existing.score) {
+                localStorage.setItem(todayResultKey(), JSON.stringify({ score: sc, wave: wv, kills: kl }));
+            }
+        }
+        function getTodayResult() {
+            try { return JSON.parse(localStorage.getItem(todayResultKey())); } catch { return null; }
+        }
+
+        function setStatus(msg, error = false) {
+            const el = document.getElementById('txStatus');
+            el.textContent = msg;
+            el.className = `text-xs text-center font-mono mt-2 min-h-[1rem] tracking-wide px-4 ${error ? 'text-red-400' : 'text-emerald-400'}`;
+        }
+        function setBtnBusy(btn, busy, busyLabel) {
+            if (busy) {
+                btn.dataset.originalHtml = btn.innerHTML;
+                btn.innerHTML = `<span>${busyLabel}</span>`;
+                btn.disabled = true;
+            } else {
+                if (btn.dataset.originalHtml) btn.innerHTML = btn.dataset.originalHtml;
+                btn.disabled = false;
+            }
+        }
+
+        // --- WEB3 / WALLET (same multi-wallet picker pattern as the rest of the Base Arcade family) ---
+        const BASE_CHAIN_ID = '0x2105';
+        const BASE_CHAIN_PARAMS = {
+            chainId: BASE_CHAIN_ID,
+            chainName: 'Base',
+            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+            rpcUrls: ['https://mainnet.base.org'],
+            blockExplorerUrls: ['https://basescan.org']
+        };
+        const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+        const WALLET_CATALOG = [
+            { id: 'metamask', name: 'MetaMask', icon: '🦊', match: p => !!p.isMetaMask && !p.isCoinbaseWallet, installUrl: 'https://metamask.io/download/', mobileLink: url => `https://metamask.app.link/dapp/${url.replace(/^https?:\/\//, '')}` },
+            { id: 'coinbase', name: 'Coinbase Wallet', icon: '🔵', match: p => !!p.isCoinbaseWallet, installUrl: 'https://www.coinbase.com/wallet/downloads', mobileLink: url => `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(url)}` },
+            { id: 'trust', name: 'Trust Wallet', icon: '🛡️', match: p => !!p.isTrust || !!p.isTrustWallet, installUrl: 'https://trustwallet.com/download', mobileLink: url => `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(url)}` },
+            { id: 'brave', name: 'Brave Wallet', icon: '🦁', match: p => !!p.isBraveWallet, installUrl: 'https://brave.com/wallet/', mobileLink: null },
+            { id: 'rabby', name: 'Rabby Wallet', icon: '🐰', match: p => !!p.isRabby, installUrl: 'https://rabby.io/', mobileLink: null }
+        ];
+        const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+        let userAddress = null;
+        let activeProvider = null;
+        let dailyTimerHandle = null;
+
+        function getInjectedProviders() {
+            if (window.ethereum?.providers?.length) return window.ethereum.providers;
+            if (window.ethereum) return [window.ethereum];
+            return [];
+        }
+        function detectWallets() {
+            const providers = getInjectedProviders();
+            const detected = [];
+            const usedProviders = new Set();
+            WALLET_CATALOG.forEach(entry => {
+                const provider = providers.find(p => entry.match(p));
+                if (provider) { detected.push({ ...entry, provider, installed: true }); usedProviders.add(provider); }
+            });
+            providers.forEach(p => {
+                if (!usedProviders.has(p)) detected.push({ id: 'injected', name: 'Browser Wallet', icon: '👛', provider: p, installed: true });
+            });
+            ['metamask', 'coinbase', 'trust'].forEach(id => {
+                if (!detected.some(w => w.id === id)) {
+                    const entry = WALLET_CATALOG.find(w => w.id === id);
+                    detected.push({ ...entry, provider: null, installed: false });
+                }
+            });
+            return detected;
+        }
+        function walletActionFor(w) {
+            if (w.installed) return { label: 'Detected', style: 'text-emerald-400', action: () => selectWallet(w) };
+            if (IS_MOBILE && w.mobileLink) {
+                return { label: 'Tap to open in wallet app', style: 'text-blue-300', action: () => { window.location.href = w.mobileLink(window.location.href); } };
+            }
+            return { label: 'Not installed — tap to get it', style: 'text-gray-400', action: () => window.open(w.installUrl, '_blank') };
+        }
+        function openWalletModal() {
+            playSound('build');
+            const wallets = detectWallets();
+            const list = document.getElementById('walletList');
+            list.innerHTML = '';
+            wallets.forEach(w => {
+                const { label, style, action } = walletActionFor(w);
+                const row = document.createElement('button');
+                row.className = 'wallet-option glass-panel w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all active:scale-95';
+                row.innerHTML = `
+                    <span class="text-2xl">${w.icon}</span>
+                    <span class="flex-1">
+                        <span class="block text-sm font-bold">${w.name}</span>
+                        <span class="block text-[11px] ${style}">${label}</span>
+                    </span>
+                `;
+                row.onclick = action;
+                list.appendChild(row);
+            });
+            document.getElementById('walletModal').classList.remove('hidden');
+        }
+        function closeWalletModal() { document.getElementById('walletModal').classList.add('hidden'); }
+        document.getElementById('walletModal').addEventListener('click', closeWalletModal);
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeWalletModal(); closeBuildModal(); } });
+
+        async function selectWallet(wallet) {
+            closeWalletModal();
+            const btn = document.getElementById('connectBtn');
+            setBtnBusy(btn, true, '...');
+            try {
+                const acc = await wallet.provider.request({ method: 'eth_requestAccounts' });
+                activeProvider = wallet.provider;
+                userAddress = acc[0];
+                document.getElementById('walletAddress').innerText = `${wallet.icon} ${userAddress.slice(0, 6)}...${userAddress.slice(-4)}`;
+                const onBaseNetwork = await ensureBaseNetwork();
+                if (onBaseNetwork) {
+                    btn.textContent = 'Disconnect';
+                    btn.onclick = disconnectWallet;
+                    setBtnBusy(btn, false);
+                    setStatus(`✅ ${wallet.name} connected on Base`);
+                } else {
+                    setBtnBusy(btn, false);
+                    setStatus("⚠️ Connected, but couldn't switch to Base — switch manually in your wallet", true);
+                }
+                activeProvider.on?.('accountsChanged', handleAccountsChanged);
+                activeProvider.on?.('chainChanged', handleChainChanged);
+                refreshActionButtons();
+            } catch (e) {
+                setBtnBusy(btn, false);
+                setStatus("❌ Connection request was rejected", true);
+            }
+        }
+        function disconnectWallet() {
+            playSound('build');
+            userAddress = null;
+            activeProvider = null;
+            document.getElementById('walletAddress').innerText = 'Not Connected';
+            const btn = document.getElementById('connectBtn');
+            btn.textContent = 'Connect';
+            btn.onclick = openWalletModal;
+            refreshActionButtons();
+            setStatus('🔌 Wallet disconnected');
+        }
+        async function ensureBaseNetwork() {
+            try {
+                await activeProvider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BASE_CHAIN_ID }] });
+                return true;
+            } catch (switchError) {
+                if (switchError && switchError.code === 4902) {
+                    try {
+                        await activeProvider.request({ method: 'wallet_addEthereumChain', params: [BASE_CHAIN_PARAMS] });
+                        return true;
+                    } catch { return false; }
+                }
+                return false;
+            }
+        }
+        function handleAccountsChanged(accounts) {
+            if (!accounts || accounts.length === 0) disconnectWallet();
+            else {
+                userAddress = accounts[0];
+                document.getElementById('walletAddress').innerText = `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}`;
+                refreshActionButtons();
+            }
+        }
+        function handleChainChanged(chainId) {
+            const onBase = chainId === BASE_CHAIN_ID;
+            document.getElementById('netLabel').textContent = onBase ? 'BASE MAINNET' : 'WRONG NETWORK';
+            document.getElementById('netDot').className = `w-2 h-2 rounded-full ${onBase ? 'bg-blue-500' : 'bg-red-500'} animate-pulse`;
+        }
+
+        function dailyKey() { return userAddress ? `basetower_daily_${userAddress.toLowerCase()}` : null; }
+
+        function refreshActionButtons() {
+            document.getElementById('saveBtn').disabled = !getTodayResult();
+            if (dailyTimerHandle) clearInterval(dailyTimerHandle);
+            const btn = document.getElementById('dailyBtn');
+            const label = document.getElementById('dailyBtnLabel');
+            const hasRun = !!getTodayResult();
+            const key = dailyKey();
+            if (!hasRun) { btn.disabled = true; label.textContent = '🧩 Play a Round First'; return; }
+            if (!key) { btn.disabled = false; label.textContent = '⚡ Claim Daily Boost'; return; }
+            const lastClaim = parseInt(localStorage.getItem(key) || '0', 10);
+            const remaining = DAILY_COOLDOWN_MS - (Date.now() - lastClaim);
+            if (remaining <= 0) { btn.disabled = false; label.textContent = '⚡ Claim Daily Boost'; return; }
+            btn.disabled = true;
+            const tick = () => {
+                const left = DAILY_COOLDOWN_MS - (Date.now() - lastClaim);
+                if (left <= 0) { clearInterval(dailyTimerHandle); btn.disabled = false; label.textContent = '⚡ Claim Daily Boost'; return; }
+                const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / 60000), s = Math.floor((left % 60000) / 1000);
+                label.textContent = `⏳ Next boost in ${h}h ${m}m ${s}s`;
+            };
+            tick();
+            dailyTimerHandle = setInterval(tick, 1000);
+        }
+
+        async function claimDailyBoost() {
+            playSound('build');
+            if (!userAddress) return setStatus('⚠️ Connect your wallet first', true);
+            if (!getTodayResult()) return setStatus('⚠️ Play a round first', true);
+            const key = dailyKey();
+            const lastClaim = parseInt(localStorage.getItem(key) || '0', 10);
+            if (Date.now() - lastClaim < DAILY_COOLDOWN_MS) return setStatus('⏳ Your daily boost is still on cooldown', true);
+
+            const btn = document.getElementById('dailyBtn');
+            setBtnBusy(btn, true, '⏳ Confirm in wallet...');
+            try {
+                setStatus('⏳ Awaiting confirmation...');
+                const tx = await activeProvider.request({
+                    method: 'eth_sendTransaction',
+                    params: [{ from: userAddress, to: userAddress, value: '0x0' }]
+                });
+                localStorage.setItem(key, Date.now().toString());
+                setStatus(`✅ Daily boost claimed! Tx: ${tx.slice(0, 10)}...`);
+                playSound('win');
+            } catch {
+                setStatus('❌ Transaction was cancelled', true);
+                playSound('breach');
+            } finally {
+                setBtnBusy(btn, false);
+                refreshActionButtons();
+            }
+        }
+
+        async function saveResultOnChain() {
+            playSound('build');
+            if (!userAddress) return setStatus('⚠️ Connect your wallet first', true);
+            const result = getTodayResult();
+            if (!result) return setStatus('⚠️ Play a round first', true);
+
+            const btn = document.getElementById('saveBtn');
+            setBtnBusy(btn, true, '⏳ Confirm in wallet...');
+            try {
+                setStatus('⏳ Signing result payload...');
+                // Demo payload only — no real contract is deployed for this free-tier build.
+                const data = '0xf7a8b9c0' + result.score.toString(16).padStart(64, '0');
+                const tx = await activeProvider.request({
+                    method: 'eth_sendTransaction',
+                    params: [{ from: userAddress, to: '0x000000000000000000000000000000000000dEaD', data }]
+                });
+                setStatus(`✅ Best score (${result.score}) saved on-chain! Tx: ${tx.slice(0, 10)}...`);
+                playSound('win');
+            } catch {
+                setStatus('❌ Failed to save result', true);
+                playSound('breach');
+            } finally {
+                setBtnBusy(btn, false);
+            }
+        }
+
+        // Initialize
+        refreshActionButtons();
+    </script>
+</body>
+</html>
