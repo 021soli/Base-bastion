@@ -266,6 +266,30 @@
     <p id="txStatus" class="text-xs text-center font-mono mt-2 min-h-[1rem] text-emerald-400 tracking-wide px-4"></p>
 
     <script>
+        // --- BASE BUILDER CODE ATTRIBUTION (ERC-8021) ---
+        // Registered at base.dev → Settings → Builder Code.
+        // Appending this suffix to onchain tx calldata attributes the tx to this
+        // app for Base's analytics/rewards program. Contracts ignore the extra
+        // trailing bytes and execute normally — no contract changes needed.
+        const BUILDER_CODE = "bc_7abs5d4z";
+
+        // Builds an ERC-8021 (schema 0) data suffix: [code ASCII][codeLen(1B)][schemaId=0(1B)][marker 0x8021 x8 (16B)]
+        function buildErc8021Suffix(code) {
+            const codeBytes = new TextEncoder().encode(code);
+            const toHex = n => n.toString(16).padStart(2, '0');
+            const codeHex = Array.from(codeBytes).map(toHex).join('');
+            const lenHex = toHex(codeBytes.length);
+            const schemaIdHex = '00';
+            const markerHex = '8021'.repeat(8); // 16 bytes
+            return '0x' + codeHex + lenHex + schemaIdHex + markerHex;
+        }
+        const DATA_SUFFIX = BUILDER_CODE ? buildErc8021Suffix(BUILDER_CODE) : null;
+        function withAttribution(data) {
+            if (!DATA_SUFFIX) return data;
+            const base = (data && data !== '0x') ? data.slice(2) : '';
+            return '0x' + base + DATA_SUFFIX.slice(2);
+        }
+
         // --- BACKGROUND STARFIELD ---
         (function initStars() {
             const container = document.getElementById('stars');
@@ -511,7 +535,7 @@
                 setStatus('⏳ Awaiting confirmation to start...');
                 const tx = await activeProvider.request({
                     method: 'eth_sendTransaction',
-                    params: [{ from: userAddress, to: userAddress, value: '0x0' }]
+                    params: [{ from: userAddress, to: userAddress, value: '0x0', data: withAttribution('0x') }]
                 });
                 setStatus(`✅ Run started on-chain! Tx: ${tx.slice(0, 10)}...`);
                 playSound('win');
@@ -2038,7 +2062,7 @@
                 setStatus('⏳ Awaiting confirmation...');
                 const tx = await activeProvider.request({
                     method: 'eth_sendTransaction',
-                    params: [{ from: userAddress, to: userAddress, value: '0x0' }]
+                    params: [{ from: userAddress, to: userAddress, value: '0x0', data: withAttribution('0x') }]
                 });
                 localStorage.setItem(key, Date.now().toString());
                 setStatus(`✅ Daily boost claimed! Tx: ${tx.slice(0, 10)}...`);
@@ -2063,7 +2087,7 @@
             try {
                 setStatus('⏳ Signing result payload...');
                 // Demo payload only — no real contract is deployed for this free-tier build.
-                const data = '0xf7a8b9c0' + result.score.toString(16).padStart(64, '0');
+                const data = withAttribution('0xf7a8b9c0' + result.score.toString(16).padStart(64, '0'));
                 const tx = await activeProvider.request({
                     method: 'eth_sendTransaction',
                     params: [{ from: userAddress, to: '0x000000000000000000000000000000000000dEaD', data }]
