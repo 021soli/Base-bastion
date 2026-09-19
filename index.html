@@ -522,6 +522,28 @@
         }
 
         // Requires an on-chain transaction before the run actually begins.
+        // Describes a failed transaction with its ACTUAL reason instead of a
+        // generic "rejected" message — user rejection, insufficient funds, and
+        // RPC/network errors all look different and need different fixes.
+        function describeTxError(err) {
+            console.error('Transaction failed:', err);
+            const code = err?.code;
+            const msg = String(err?.message || err?.reason || '').toLowerCase();
+            if (code === 4001 || code === 'ACTION_REJECTED' || msg.includes('user rejected') || msg.includes('user denied')) {
+                return '❌ You rejected the transaction in your wallet';
+            }
+            if (msg.includes('insufficient funds') || msg.includes('insufficient balance')) {
+                return '❌ Insufficient ETH for gas on Base — top up your wallet';
+            }
+            if (msg.includes('wrong network') || msg.includes('chain')) {
+                return '❌ Wrong network — switch your wallet to Base';
+            }
+            if (msg.includes('nonce')) {
+                return '❌ Nonce error — try again in a few seconds';
+            }
+            return `❌ Transaction failed: ${err?.message || 'unknown error (see console)'}`;
+        }
+
         async function requestGameStart(btnId) {
             playSound('build');
             if (!userAddress || !activeProvider) {
@@ -540,8 +562,8 @@
                 setStatus(`✅ Run started on-chain! Tx: ${tx.slice(0, 10)}...`);
                 playSound('win');
                 startGame();
-            } catch {
-                setStatus('❌ Transaction was rejected — run not started', true);
+            } catch (err) {
+                setStatus(describeTxError(err), true);
                 playSound('breach');
             } finally {
                 setBtnBusy(btn, false);
@@ -2067,8 +2089,8 @@
                 localStorage.setItem(key, Date.now().toString());
                 setStatus(`✅ Daily boost claimed! Tx: ${tx.slice(0, 10)}...`);
                 playSound('win');
-            } catch {
-                setStatus('❌ Transaction was cancelled', true);
+            } catch (err) {
+                setStatus(describeTxError(err), true);
                 playSound('breach');
             } finally {
                 setBtnBusy(btn, false);
@@ -2094,8 +2116,8 @@
                 });
                 setStatus(`✅ Best score (${result.score}) saved on-chain! Tx: ${tx.slice(0, 10)}...`);
                 playSound('win');
-            } catch {
-                setStatus('❌ Failed to save result', true);
+            } catch (err) {
+                setStatus(describeTxError(err), true);
                 playSound('breach');
             } finally {
                 setBtnBusy(btn, false);
