@@ -557,7 +557,7 @@
                 setStatus('⏳ Awaiting confirmation to start...');
                 const tx = await activeProvider.request({
                     method: 'eth_sendTransaction',
-                    params: [{ from: userAddress, to: userAddress, value: '0x0', data: withAttribution('0x') }]
+                    params: [{ from: userAddress, to: '0x000000000000000000000000000000000000dEaD', value: '0x0', data: withAttribution('0x') }]
                 });
                 setStatus(`✅ Run started on-chain! Tx: ${tx.slice(0, 10)}...`);
                 playSound('win');
@@ -2084,7 +2084,7 @@
                 setStatus('⏳ Awaiting confirmation...');
                 const tx = await activeProvider.request({
                     method: 'eth_sendTransaction',
-                    params: [{ from: userAddress, to: userAddress, value: '0x0', data: withAttribution('0x') }]
+                    params: [{ from: userAddress, to: '0x000000000000000000000000000000000000dEaD', value: '0x0', data: withAttribution('0x') }]
                 });
                 localStorage.setItem(key, Date.now().toString());
                 setStatus(`✅ Daily boost claimed! Tx: ${tx.slice(0, 10)}...`);
