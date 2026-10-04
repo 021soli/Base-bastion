@@ -8,6 +8,7 @@
     <meta name="description" content="A tower defense game for the Base network — build turrets, defend the Base Core from FUD invaders, and claim onchain rewards.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏯</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;900&display=swap');
 
@@ -290,6 +291,36 @@
             return '0x' + base + DATA_SUFFIX.slice(2);
         }
 
+        // --- BASE BASTION SMART CONTRACT (deployed on Base Mainnet) ---
+        const CONTRACT_ADDRESS = '0xb565227d2301945143eb6f734beb874b31af64b8';
+        const CONTRACT_ABI = [
+            'function startRun()',
+            'function saveScore(uint256 score, uint256 wave)',
+            'function claimDailyBoost()',
+            'function getPlayerStats(address player) view returns (uint256 bestScore, uint256 bestWave, uint256 totalRuns, uint256 lastClaimTimestamp, uint256 totalClaims, uint256 currentStreak, bool canClaimNow)',
+            'function timeUntilNextClaim(address player) view returns (uint256)'
+        ];
+        let _contractInterface = null;
+        function getContractInterface() {
+            if (!_contractInterface) {
+                if (typeof ethers === 'undefined') {
+                    throw new Error('ethers.js failed to load — check your connection and refresh');
+                }
+                _contractInterface = new ethers.Interface(CONTRACT_ABI);
+            }
+            return _contractInterface;
+        }
+        // Encodes a call to the deployed contract, appends Builder Code attribution,
+        // and sends it to CONTRACT_ADDRESS (not a burn address, not a self-transfer).
+        async function sendContractTx(functionName, args = []) {
+            const iface = getContractInterface();
+            const data = withAttribution(iface.encodeFunctionData(functionName, args));
+            return activeProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{ from: userAddress, to: CONTRACT_ADDRESS, value: '0x0', data }]
+            });
+        }
+
         // --- BACKGROUND STARFIELD ---
         (function initStars() {
             const container = document.getElementById('stars');
@@ -541,6 +572,12 @@
             if (msg.includes('nonce')) {
                 return '❌ Nonce error — try again in a few seconds';
             }
+            if (msg.includes('cooldown') || msg.includes('already claimed') || msg.includes('too soon')) {
+                return '❌ Daily boost is still on cooldown — check back later';
+            }
+            if (msg.includes('cannot include data') || msg.includes('internal account')) {
+                return '❌ Wallet blocked this transaction — try reconnecting your wallet';
+            }
             return `❌ Transaction failed: ${err?.message || 'unknown error (see console)'}`;
         }
 
@@ -555,10 +592,7 @@
             setBtnBusy(btn, true, '⏳ Confirm in wallet...');
             try {
                 setStatus('⏳ Awaiting confirmation to start...');
-                const tx = await activeProvider.request({
-                    method: 'eth_sendTransaction',
-                    params: [{ from: userAddress, to: contractAddress, value: '0x0', data: withAttribution('0x') }]
-                });
+                const tx = await sendContractTx('startRun');
                 setStatus(`✅ Run started on-chain! Tx: ${tx.slice(0, 10)}...`);
                 playSound('win');
                 startGame();
@@ -2082,10 +2116,7 @@
             setBtnBusy(btn, true, '⏳ Confirm in wallet...');
             try {
                 setStatus('⏳ Awaiting confirmation...');
-                const tx = await activeProvider.request({
-                    method: 'eth_sendTransaction',
-                    params: [{ from: userAddress, to: contractAddress, value: '0x0', data: withAttribution('0x') }]
-                });
+                const tx = await sendContractTx('claimDailyBoost');
                 localStorage.setItem(key, Date.now().toString());
                 setStatus(`✅ Daily boost claimed! Tx: ${tx.slice(0, 10)}...`);
                 playSound('win');
@@ -2107,13 +2138,8 @@
             const btn = document.getElementById('saveBtn');
             setBtnBusy(btn, true, '⏳ Confirm in wallet...');
             try {
-                setStatus('⏳ Signing result payload...');
-                // Demo payload only — no real contract is deployed for this free-tier build.
-                const data = withAttribution('0xf7a8b9c0' + result.score.toString(16).padStart(64, '0'));
-                const tx = await activeProvider.request({
-                    method: 'eth_sendTransaction',
-                    params: [{ from: userAddress, to: contractAddress, data }]
-                });
+                setStatus('⏳ Awaiting confirmation...');
+                const tx = await sendContractTx('saveScore', [result.score, result.wave]);
                 setStatus(`✅ Best score (${result.score}) saved on-chain! Tx: ${tx.slice(0, 10)}...`);
                 playSound('win');
             } catch (err) {
